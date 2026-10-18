@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Printable Lampshade Studio — Multi-Color 3MF & OBJ</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --panel: #1a1d26;
+      --text: #eef0f4;
+      --accent: #ec4899;
+      --accent-2: #8b5cf6;
+      --border: #2d3240;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { display: flex; height: 100vh; background: var(--bg); color: var(--text); overflow: hidden; }
+    #sidebar {
+      width: 390px; background: var(--panel); border-right: 1px solid var(--border);
+      padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; z-index: 10;
+    }
+    h1 {
+      font-size: 1.2rem; font-weight: 800;
+      background: linear-gradient(90deg, #f472b6, #a78bfa, #38bdf8);
+      background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .section-title {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: #94a3b8; margin-bottom: 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px;
+    }
+    .control-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 7px; }
+    .control-header { display: flex; justify-content: space-between; font-size: 0.8rem; }
+    .val { color: #38bdf8; font-weight: 600; font-variant-numeric: tabular-nums; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    select, button, input[type="file"] {
+      width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: #252936; color: var(--text); font-size: 0.83rem; cursor: pointer;
+    }
+    .color-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;
+    }
+    .color-item {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      background: #14171f; padding: 6px; border-radius: 6px; border: 1px solid var(--border);
+      font-size: 0.73rem; color: #cbd5e1;
+    }
+    input[type="color"] {
+      width: 100%; height: 26px; border: none; border-radius: 4px; cursor: pointer; background: none;
+    }
+    .preset-row { display: flex; gap: 6px; margin-bottom: 6px; }
+    .preset-chip {
+      flex: 1; padding: 5px; font-size: 0.72rem; border-radius: 5px; border: 1px solid var(--border);
+      text-align: center; cursor: pointer; font-weight: 600; color: #fff;
+    }
+    .mode-panel {
+      background: #14171f; border: 1px solid var(--border); border-radius: 8px; padding: 11px;
+    }
+    .hidden { display: none !important; }
+    .export-grid {
+      display: flex; flex-direction: column; gap: 6px; margin-top: auto; padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .btn-3mf {
+      background: linear-gradient(135deg, #ec4899, #8b5cf6);
+      color: #fff; font-weight: 700; border: none; padding: 11px; font-size: 0.88rem;
+    }
+    .btn-obj {
+      background: linear-gradient(135deg, #0ea5e9, #10b981);
+      color: #fff; font-weight: 700; border: none; padding: 10px; font-size: 0.85rem;
+    }
+    .btn-stl {
+      background: #252936; color: #cbd5e1; font-weight: 600; padding: 8px; font-size: 0.8rem;
+    }
+    .btn-secondary {
+      background: #2e3446; color: var(--text); font-weight: 600; margin-top: 4px;
+    }
+    button:hover { opacity: 0.92; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; padding: 3px 0; }
+    #viewport { flex: 1; position: relative; }
+    #badge {
+      position: absolute; bottom: 16px; left: 16px; background: rgba(26,29,38,0.88);
+      padding: 8px 12px; border-radius: 6px; font-size: 0.78rem; color: #94a3b8;
+      border: 1px solid var(--border); pointer-events: none;
+    }
+    #status { font-size: 0.74rem; color: #34d399; margin-top: 4px; }
+  </style>
+  <!-- JSZip for packaging standard .3MF archives -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <aside id="sidebar">
+    <h1>Lampshade Studio Multi-Color</h1>
+
+    <!-- COLOR & AMS STUDIO -->
+    <div class="mode-panel">
+      <div class="section-title">Color & Multi-Material AMS Studio</div>
+      <div class="color-grid">
+        <div class="color-item">
+          <span>Bottom Color</span>
+          <input type="color" id="colBottom" value="#ff5e7e">
+        </div>
+        <div class="color-item">
+          <span>Top Color</span>
+          <input type="color" id="colTop" value="#6366f1">
+        </div>
+        <div class="color-item">
+          <span>Bulb Glow</span>
+          <input type="color" id="colBulb" value="#ffaa33">
+        </div>
+      </div>
+      <div class="preset-row">
+        <div class="preset-chip" style="background:linear-gradient(90deg,#ff5e7e,#6366f1)" data-b="#ff5e7e" data-t="#6366f1" data-l="#ffaa33">Sunset</div>
+        <div class="preset-chip" style="background:linear-gradient(90deg,#06b6d4,#10b981)" data-b="#06b6d4" data-t="#10b981" data-l="#a7f3d0">Ocean</div>
+        <div class="preset-chip" style="background:linear-gradient(90deg,#f59e0b,#ef4444)" data-b="#f59e0b" data-t="#ef4444" data-l="#fde047">Amber</div>
+        <div class="preset-chip" style="background:linear-gradient(90deg,#fffbf0,#e2e8f0);color:#111" data-b="#fffbf0" data-t="#ffffff" data-l="#ff9933">White</div>
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>3MF Filament Slots (AMS/MMU)</span><span id="v-amsSlots" class="val">4</span></div>
+        <input type="range" id="amsSlots" min="2" max="8" step="1" value="4">
+      </div>
+      <div class="toggle-row">
+        <span>Preview Discrete AMS Color Bands</span>
+        <input type="checkbox" id="quantizeToggle">
+      </div>
+      <div class="toggle-row">
+        <span>Rainbow Spiral Mode</span>
+        <input type="checkbox" id="rainbowToggle">
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Surface Mode</div>
+      <select id="modeSelect">
+        <option value="voronoi" selected>Voronoi Cutout Lattice (Smooth)</option>
+        <option value="ribs">Parametric Ribs & Waves</option>
+        <option value="lithophane">Lithophane Photo Mapping</option>
+      </select>
+    </div>
+
+    <!-- MODE 1: VORONOI -->
+    <div id="panel-voronoi" class="mode-panel">
+      <div class="section-title">Voronoi & Laplacian Smoothing</div>
+      <div class="control-group">
+        <div class="control-header"><span>Laplacian Smoothing Passes</span><span id="v-vSmooth" class="val">10</span></div>
+        <input type="range" id="vSmooth" min="0" max="20" step="1" value="10">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Cell Density (Columns)</span><span id="v-vCols" class="val">14</span></div>
+        <input type="range" id="vCols" min="6" max="24" step="1" value="14">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Vertical Cells (Rows)</span><span id="v-vRows" class="val">9</span></div>
+        <input type="range" id="vRows" min="4" max="16" step="1" value="9">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Strut Thickness</span><span id="v-vStrut" class="val">0.27</span></div>
+        <input type="range" id="vStrut" min="0.16" max="0.55" step="0.01" value="0.27">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Organic Irregularity</span><span id="v-vJitter" class="val">0.75</span></div>
+        <input type="range" id="vJitter" min="0.0" max="0.9" step="0.05" value="0.75">
+      </div>
+      <button class="btn-secondary" id="reseedBtn">Randomize Voronoi Pattern</button>
+    </div>
+
+    <!-- MODE 2: RIBS -->
+    <div id="panel-ribs" class="mode-panel hidden">
+      <div class="section-title">Wave Pattern</div>
+      <div class="control-group">
+        <div class="control-header"><span>Ribs / Waves Count</span><span id="v-ribs" class="val">18</span></div>
+        <input type="range" id="ribs" min="0" max="60" step="1" value="18">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Rib Depth (mm)</span><span id="v-ribDepth" class="val">5</span></div>
+        <input type="range" id="ribDepth" min="0" max="20" step="0.5" value="5">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Spiral Twist (deg)</span><span id="v-twist" class="val">120</span></div>
+        <input type="range" id="twist" min="-360" max="360" step="15" value="120">
+      </div>
+    </div>
+
+    <!-- MODE 3: LITHOPHANE -->
+    <div id="panel-lithophane" class="mode-panel hidden">
+      <div class="section-title">Lithophane Image Settings</div>
+      <div class="control-group">
+        <input type="file" id="imgUpload" accept="image/*">
+        <div id="status">Default mountain landscape loaded.</div>
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Min Thickness (Bright)</span><span id="v-lithoMin" class="val">0.8</span></div>
+        <input type="range" id="lithoMin" min="0.6" max="2.0" step="0.1" value="0.8">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Max Thickness (Dark)</span><span id="v-lithoMax" class="val">3.2</span></div>
+        <input type="range" id="lithoMax" min="1.6" max="5.0" step="0.2" value="3.2">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Image Repeat Around</span><span id="v-lithoRep" class="val">2</span></div>
+        <input type="range" id="lithoRep" min="1" max="6" step="1" value="2">
+      </div>
+      <div class="toggle-row">
+        <span>Invert Image (Negative)</span>
+        <input type="checkbox" id="lithoInvert">
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Base Dimensions & Mount</div>
+      <div class="control-group">
+        <div class="control-header"><span>Height (mm)</span><span id="v-height" class="val">160</span></div>
+        <input type="range" id="height" min="60" max="280" step="5" value="160">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Bottom Radius (mm)</span><span id="v-rBot" class="val">65</span></div>
+        <input type="range" id="rBot" min="25" max="140" step="1" value="65">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Top Radius (mm)</span><span id="v-rTop" class="val">45</span></div>
+        <input type="range" id="rTop" min="20" max="140" step="1" value="45">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Wall Thickness (mm)</span><span id="v-wall" class="val">2.4</span></div>
+        <input type="range" id="wall" min="0.8" max="5.0" step="0.2" value="2.4">
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Silhouette Curve</span></div>
+        <select id="profile">
+          <option value="tulip">Tulip (S-Curve)</option>
+          <option value="cone">Classic Cone / Cylinder</option>
+          <option value="sphere">Rounded Dome</option>
+          <option value="bulb">Hourglass / Bulb</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <div class="control-header"><span>Curvature Bulge</span><span id="v-bulge" class="val">14</span></div>
+        <input type="range" id="bulge" min="-35" max="45" step="1" value="14">
+      </div>
+      <div class="control-group">
+        <select id="socket">
+          <option value="40">E27 Standard Ring (40mm hole)</option>
+          <option value="28">E14 Small Ring (28mm hole)</option>
+          <option value="59">Bambu LED Lamp Kit (59mm ledge)</option>
+          <option value="0">No Mount (Open Cylinder)</option>
+        </select>
+      </div>
+      <div class="toggle-row">
+        <span>Test Internal LED Bulb</span>
+        <input type="checkbox" id="bulbToggle" checked>
+      </div>
+      <div class="toggle-row">
+        <span>Show Mesh Wireframe</span>
+        <input type="checkbox" id="wireToggle">
+      </div>
+    </div>
+
+    <div class="export-grid">
+      <button class="btn-3mf" id="export3mfBtn">Download Multi-Color .3MF (Bambu / Prusa)</button>
+      <button class="btn-obj" id="exportObjBtn">Download Vertex-Colored .OBJ (Gradient)</button>
+      <button class="btn-stl" id="exportStlBtn">Download Standard .STL (Single Color)</button>
+    </div>
+  </aside>
+
+  <main id="viewport">
+    <div id="badge">Orbit: Left Click &bull; Zoom: Scroll &bull; Multi-Color 3MF &amp; Vertex-Color OBJ Ready</div>
+  </main>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+
+    const container = document.getElementById('viewport');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f1117);
+
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 2000);
+    camera.position.set(0, 135, 330);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 80, 0);
+    controls.enableDamping = true;
+
+    scene.add(new THREE.GridHelper(300, 30, 0x3b4254, 0x1e222d));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.65);
+    dirLight.position.set(160, 300, 220);
+    scene.add(dirLight);
+
+    const bulbLight = new THREE.PointLight(0xffaa33, 4.5, 520, 1.15);
+    bulbLight.position.set(0, 75, 0);
+    scene.add(bulbLight);
+
+    const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
+    const bulbMesh = new THREE.Mesh(new THREE.SphereGeometry(15, 24, 24), bulbMat);
+    bulbMesh.position.copy(bulbLight.position);
+    scene.add(bulbMesh);
+
+    const shadeMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 0.32,
+      transmission: 0.38,
+      thickness: 2.2,
+      side: THREE.DoubleSide
+    });
+
+    let shadeMesh = null;
+    let randomSeed = 42;
+    let currentPaletteHex = []; // Stores discrete AMS slot hex colors for 3MF export
+    let vertexSlotIndices = []; // Maps each vertex to its discrete AMS filament slot (0..N-1)
+
+    const imgCanvas = document.createElement('canvas');
+    const imgCtx = imgCanvas.getContext('2d', { willReadFrequently: true });
+    imgCanvas.width = 512;
+    imgCanvas.height = 512;
+    let imgPixels = null;
+
+    function createDefaultLithoImage() {
+      const w = imgCanvas.width, h = imgCanvas.height;
+      const grad = imgCtx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(1, '#333333');
+      imgCtx.fillStyle = grad;
+      imgCtx.fillRect(0, 0, w, h);
+
+      imgCtx.fillStyle = '#ffffff';
+      imgCtx.beginPath();
+      imgCtx.arc(w * 0.5, h * 0.32, 65, 0, Math.PI * 2);
+      imgCtx.fill();
+
+      for (let layer = 0; layer < 3; layer++) {
+        imgCtx.fillStyle = `rgb(${40 + layer * 45}, ${40 + layer * 45}, ${40 + layer * 45})`;
+        imgCtx.beginPath();
+        imgCtx.moveTo(0, h);
+        for (let x = 0; x <= w; x += 8) {
+          const y = h * (0.55 + layer * 0.12) + Math.sin(x * 0.02 + layer * 2) * 35 + Math.cos(x * 0.05) * 15;
+          imgCtx.lineTo(x, y);
+        }
+        imgCtx.lineTo(w, h);
+        imgCtx.fill();
+      }
+      imgPixels = imgCtx.getImageData(0, 0, w, h).data;
+    }
+    createDefaultLithoImage();
+
+    document.getElementById('imgUpload').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
+          imgCtx.drawImage(img, 0, 0, imgCanvas.width, imgCanvas.height);
+          imgPixels = imgCtx.getImageData(0, 0, imgCanvas.width, imgCanvas.height).data;
+          document.getElementById('status').textContent = `Loaded: ${file.name}`;
+          buildLampshadeGeometry();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function sampleLithophane(u, v, repeat, invert) {
+      if (!imgPixels) return 0.5;
+      const wrappedU = (((u * repeat) % 1.0) + 1.0) % 1.0;
+      const clampedV = Math.max(0, Math.min(1, v));
+      const x = Math.min(imgCanvas.width - 1, Math.floor(wrappedU * imgCanvas.width));
+      const y = Math.min(imgCanvas.height - 1, Math.floor((1.0 - clampedV) * imgCanvas.height));
+      const idx = (y * imgCanvas.width + x) * 4;
+      let lum = (0.299 * imgPixels[idx] + 0.587 * imgPixels[idx + 1] + 0.114 * imgPixels[idx + 2]) / 255.0;
+      if (invert) lum = 1.0 - lum;
+      return 1.0 - lum;
+    }
+
+    function createVoronoiField(cols, rows, jitter) {
+      let s = randomSeed;
+      const rand = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
+      const seeds = Array.from({ length: cols }, () => Array(rows));
+      for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+          seeds[c][r] = {
+            u: c + 0.5 + (rand() - 0.5) * jitter,
+            v: r + 0.5 + (rand() - 0.5) * jitter
+          };
+        }
+      }
+      return { seeds, cols, rows };
+    }
+
+    function isVoronoiCutout(u, v, field, strutWidth) {
+      if (v < 0.08 || v > 0.92) return false;
+      const { seeds, cols, rows } = field;
+      const gu = u * cols;
+      const gv = v * rows;
+      const cu = Math.floor(gu);
+      const cv = Math.floor(gv);
+
+      let d1 = 999, d2 = 999;
+      for (let dc = -1; dc <= 1; dc++) {
+        for (let dr = -1; dr <= 1; dr++) {
+          const nr = cv + dr;
+          if (nr < 0 || nr >= rows) continue;
+          const nc = (cu + dc + cols) % cols;
+          const seed = seeds[nc][nr];
+          const du = (cu + dc) + (seed.u - Math.floor(seed.u)) - gu;
+          const dv = seed.v - gv;
+          const dist = Math.hypot(du, dv);
+          if (dist < d1) { d2 = d1; d1 = dist; }
+          else if (dist < d2) { d2 = dist; }
+        }
+      }
+      return (d2 - d1) > strutWidth;
+    }
+
+    function smoothGridUV(uGrid, vGrid, solidGrid, radialSegs, heightSegs, iterations) {
+      if (iterations <= 0) return;
+
+      const isBoundary = Array.from({ length: heightSegs + 1 }, () => Array(radialSegs).fill(false));
+      const isActive = Array.from({ length: heightSegs + 1 }, () => Array(radialSegs).fill(false));
+
+      for (let j = 1; j < heightSegs; j++) {
+        for (let i = 0; i < radialSegs; i++) {
+          const prevI = (i - 1 + radialSegs) % radialSegs;
+          const c1 = solidGrid[j - 1][prevI];
+          const c2 = solidGrid[j - 1][i];
+          const c3 = solidGrid[j][prevI];
+          const c4 = solidGrid[j][i];
+          const solidCount = (c1 ? 1 : 0) + (c2 ? 1 : 0) + (c3 ? 1 : 0) + (c4 ? 1 : 0);
+          if (solidCount > 0) isActive[j][i] = true;
+          if (solidCount > 0 && solidCount < 4) isBoundary[j][i] = true;
+        }
+      }
+
+      const nextU = Array.from({ length: heightSegs + 1 }, (_, j) => uGrid[j].slice());
+      const nextV = Array.from({ length: heightSegs + 1 }, (_, j) => vGrid[j].slice());
+
+      for (let iter = 0; iter < iterations; iter++) {
+        for (let j = 1; j < heightSegs; j++) {
+          for (let i = 0; i < radialSegs; i++) {
+            if (!isActive[j][i]) continue;
+
+            const prevI = (i - 1 + radialSegs) % radialSegs;
+            const nextI = (i + 1) % radialSegs;
+            const u0 = uGrid[j][i];
+            const v0 = vGrid[j][i];
+
+            const candidates = [
+              { j, i: prevI, b: isBoundary[j][prevI] },
+              { j, i: nextI, b: isBoundary[j][nextI] },
+              { j: j - 1, i, b: isBoundary[j - 1][i] },
+              { j: j + 1, i, b: isBoundary[j + 1][i] },
+              { j: j - 1, i: prevI, b: isBoundary[j - 1][prevI] },
+              { j: j - 1, i: nextI, b: isBoundary[j - 1][nextI] },
+              { j: j + 1, i: prevI, b: isBoundary[j + 1][prevI] },
+              { j: j + 1, i: nextI, b: isBoundary[j + 1][nextI] }
+            ];
+
+            let sumDu = 0, sumV = 0, weightSum = 0;
+
+            for (const n of candidates) {
+              const w = isBoundary[j][i]
+                ? (n.b ? 3.5 : (isActive[n.j][n.i] ? 0.35 : 0))
+                : (isActive[n.j][n.i] ? 1.0 : 0);
+
+              if (w > 0) {
+                let du = uGrid[n.j][n.i] - u0;
+                if (du > 0.5) du -= 1.0;
+                if (du < -0.5) du += 1.0;
+                sumDu += du * w;
+                sumV += vGrid[n.j][n.i] * w;
+                weightSum += w;
+              }
+            }
+
+            if (weightSum > 0) {
+              const alpha = isBoundary[j][i] ? 0.62 : 0.42;
+              nextU[j][i] = (u0 + alpha * (sumDu / weightSum) + 1.0) % 1.0;
+              nextV[j][i] = v0 + alpha * ((sumV / weightSum) - v0);
+            }
+          }
+        }
+
+        for (let j = 1; j < heightSegs; j++) {
+          for (let i = 0; i < radialSegs; i++) {
+            uGrid[j][i] = nextU[j][i];
+            vGrid[j][i] = nextV[j][i];
+          }
+        }
+      }
+    }
+
+    function getRadiusAt(v, params) {
+      const { rBot, rTop, bulge, profile } = params;
+      const baseR = rBot * (1 - v) + rTop * v;
+      if (profile === 'cone') return baseR;
+      if (profile === 'sphere') return baseR + Math.sin(v * Math.PI) * bulge;
+      if (profile === 'tulip') return baseR + Math.sin(v * Math.PI * 1.5) * bulge;
+      if (profile === 'bulb') return baseR + Math.sin(v * Math.PI * 2) * bulge;
+      return baseR;
+    }
+
+    function buildLampshadeGeometry() {
+      const mode = document.getElementById('modeSelect').value;
+      const params = {
+        height: parseFloat(document.getElementById('height').value),
+        rBot: parseFloat(document.getElementById('rBot').value),
+        rTop: parseFloat(document.getElementById('rTop').value),
+        wall: parseFloat(document.getElementById('wall').value),
+        bulge: parseFloat(document.getElementById('bulge').value),
+        ribs: parseInt(document.getElementById('ribs').value, 10),
+        ribDepth: parseFloat(document.getElementById('ribDepth').value),
+        twist: parseFloat(document.getElementById('twist').value) * (Math.PI / 180),
+        vSmooth: parseInt(document.getElementById('vSmooth').value, 10),
+        vCols: parseInt(document.getElementById('vCols').value, 10),
+        vRows: parseInt(document.getElementById('vRows').value, 10),
+        vStrut: parseFloat(document.getElementById('vStrut').value),
+        vJitter: parseFloat(document.getElementById('vJitter').value),
+        lithoMin: parseFloat(document.getElementById('lithoMin').value),
+        lithoMax: parseFloat(document.getElementById('lithoMax').value),
+        lithoRep: parseInt(document.getElementById('lithoRep').value, 10),
+        lithoInvert: document.getElementById('lithoInvert').checked,
+        profile: document.getElementById('profile').value,
+        socketDia: parseFloat(document.getElementById('socket').value),
+        colBottom: new THREE.Color(document.getElementById('colBottom').value),
+        colTop: new THREE.Color(document.getElementById('colTop').value),
+        colBulb: new THREE.Color(document.getElementById('colBulb').value),
+        amsSlots: parseInt(document.getElementById('amsSlots').value, 10),
+        quantize: document.getElementById('quantizeToggle').checked,
+        rainbow: document.getElementById('rainbowToggle').checked
+      };
+
+      ['height', 'rBot', 'rTop', 'wall', 'bulge', 'ribs', 'ribDepth', 'twist',
+       'vSmooth', 'vCols', 'vRows', 'vStrut', 'vJitter', 'lithoMin', 'lithoMax', 'lithoRep', 'amsSlots'].forEach(id => {
+        const el = document.getElementById('v-' + id);
+        if (el) el.textContent = document.getElementById(id).value;
+      });
+
+      bulbLight.color.copy(params.colBulb);
+      bulbMat.color.copy(params.colBulb);
+      bulbLight.position.y = params.height * 0.45;
+      bulbMesh.position.y = params.height * 0.45;
+
+      // Build Discrete AMS Palette for 3MF Export & Quantized Preview
+      currentPaletteHex = [];
+      const paletteColors = [];
+      for (let s = 0; s < params.amsSlots; s++) {
+        const t = params.amsSlots === 1 ? 0 : s / (params.amsSlots - 1);
+        const c = new THREE.Color();
+        if (params.rainbow) {
+          c.setHSL(t, 0.82, 0.58);
+        } else {
+          c.copy(params.colBottom).lerp(params.colTop, t);
+        }
+        paletteColors.push(c);
+        currentPaletteHex.push('#' + c.getHexString().toUpperCase());
+      }
+
+      const radialSegs = mode === 'ribs' ? 160 : 200;
+      const heightSegs = mode === 'ribs' ? 90 : 130;
+      const stride = radialSegs;
+
+      const solidGrid = Array.from({ length: heightSegs }, () => Array(radialSegs).fill(true));
+      if (mode === 'voronoi') {
+        const vField = createVoronoiField(params.vCols, params.vRows, params.vJitter);
+        for (let j = 0; j < heightSegs; j++) {
+          const v = (j + 0.5) / heightSegs;
+          for (let i = 0; i < radialSegs; i++) {
+            const u = (i + 0.5) / radialSegs;
+            if (isVoronoiCutout(u, v, vField, params.vStrut)) {
+              solidGrid[j][i] = false;
+            }
+          }
+        }
+      }
+
+      const uGrid = Array.from({ length: heightSegs + 1 }, () => new Float32Array(radialSegs));
+      const vGrid = Array.from({ length: heightSegs + 1 }, () => new Float32Array(radialSegs));
+      for (let j = 0; j <= heightSegs; j++) {
+        const v = j / heightSegs;
+        for (let i = 0; i < radialSegs; i++) {
+          uGrid[j][i] = i / radialSegs;
+          vGrid[j][i] = v;
+        }
+      }
+
+      if (mode === 'voronoi' && params.vSmooth > 0) {
+        smoothGridUV(uGrid, vGrid, solidGrid, radialSegs, heightSegs, params.vSmooth);
+      }
+
+      const vertices = [];
+      const colors = [];
+      const indices = [];
+      vertexSlotIndices = [];
+      const tempColor = new THREE.Color();
+
+      for (let pass = 0; pass < 2; pass++) {
+        const isInner = pass === 1;
+        for (let j = 0; j <= heightSegs; j++) {
+          for (let i = 0; i < radialSegs; i++) {
+            const u = uGrid[j][i];
+            const v = Math.max(0, Math.min(1, vGrid[j][i]));
+            const y = v * params.height;
+            const theta = u * Math.PI * 2;
+            const baseR = Math.max(10, getRadiusAt(v, params));
+            const rimFade = Math.min(1, v / 0.08) * Math.min(1, (1 - v) / 0.06);
+
+            let rOuter = baseR;
+            let rInner = Math.max(4, baseR - params.wall);
+
+            if (mode === 'ribs') {
+              const wave = Math.sin(theta * params.ribs + v * params.twist) * params.ribDepth * Math.min(1, v / 0.08);
+              rOuter = baseR + wave;
+              rInner = Math.max(4, rOuter - params.wall);
+            } else if (mode === 'lithophane') {
+              const darkness = sampleLithophane(u, v, params.lithoRep, params.lithoInvert);
+              const lithoThickness = params.lithoMin + darkness * (params.lithoMax - params.lithoMin);
+              const blendedThickness = params.wall * (1 - rimFade) + lithoThickness * rimFade;
+              rInner = Math.max(4, baseR - params.wall);
+              rOuter = rInner + blendedThickness;
+            }
+
+            if (isInner && j === 0 && params.socketDia > 0 && params.socketDia / 2 < rInner) {
+              rInner = params.socketDia / 2;
+            }
+
+            const r = isInner ? rInner : rOuter;
+            vertices.push(r * Math.cos(theta), y, r * Math.sin(theta));
+
+            // Calculate normalized color parameter t in [0, 1]
+            const gradT = params.rainbow ? ((u + v * 0.65) % 1.0) : v;
+            const slotIdx = Math.min(params.amsSlots - 1, Math.floor(gradT * params.amsSlots));
+            vertexSlotIndices.push(slotIdx);
+
+            if (params.quantize) {
+              tempColor.copy(paletteColors[slotIdx]);
+            } else if (params.rainbow) {
+              tempColor.setHSL(gradT, 0.82, 0.58);
+            } else {
+              tempColor.copy(params.colBottom).lerp(params.colTop, v);
+            }
+            colors.push(tempColor.r, tempColor.g, tempColor.b);
+          }
+        }
+      }
+
+      const innerOffset = (heightSegs + 1) * stride;
+
+      for (let j = 0; j < heightSegs; j++) {
+        for (let i = 0; i < radialSegs; i++) {
+          if (!solidGrid[j][i]) continue;
+          const nextI = (i + 1) % radialSegs;
+          const prevI = (i - 1 + radialSegs) % radialSegs;
+
+          const oBL = j * stride + i;
+          const oBR = j * stride + nextI;
+          const oTR = (j + 1) * stride + nextI;
+          const oTL = (j + 1) * stride + i;
+
+          const iBL = innerOffset + oBL;
+          const iBR = innerOffset + oBR;
+          const iTR = innerOffset + oTR;
+          const iTL = innerOffset + oTL;
+
+          indices.push(oBL, oBR, oTR, oBL, oTR, oTL);
+          indices.push(iBL, iTR, iBR, iBL, iTL, iTR);
+
+          if (!solidGrid[j][nextI]) indices.push(oBR, iBR, iTR, oBR, iTR, oTR);
+          if (!solidGrid[j][prevI]) indices.push(oTL, iTL, iBL, oTL, iBL, oBL);
+          if (j < heightSegs - 1 && !solidGrid[j + 1][i]) indices.push(oTR, iTR, iTL, oTR, iTL, oTL);
+          if (j > 0 && !solidGrid[j - 1][i]) indices.push(oBL, iBL, iBR, oBL, iBR, oBR);
+        }
+      }
+
+      for (let i = 0; i < radialSegs; i++) {
+        const nextI = (i + 1) % radialSegs;
+        const topO1 = heightSegs * stride + i;
+        const topO2 = heightSegs * stride + nextI;
+        const topI1 = innerOffset + topO1;
+        const topI2 = innerOffset + topO2;
+        indices.push(topO1, topO2, topI2, topO1, topI2, topI1);
+
+        const botO1 = i;
+        const botO2 = nextI;
+        const botI1 = innerOffset + i;
+        const botI2 = innerOffset + nextI;
+        indices.push(botO1, botI2, botO2, botO1, botI1, botI2);
+      }
+
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geom.setIndex(indices);
+      geom.computeVertexNormals();
+
+      if (shadeMesh) {
+        scene.remove(shadeMesh);
+        shadeMesh.geometry.dispose();
+      }
+      shadeMesh = new THREE.Mesh(geom, shadeMat);
+      scene.add(shadeMesh);
+    }
+
+    // 1. MULTI-MATERIAL .3MF EXPORTER (Bambu Studio / PrusaSlicer / OrcaSlicer compatible)
+    document.getElementById('export3mfBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('export3mfBtn');
+      const origText = btn.textContent;
+      btn.textContent = 'Packaging .3MF Archive...';
+
+      const posAttr = shadeMesh.geometry.getAttribute('position');
+      const idxAttr = shadeMesh.geometry.getIndex();
+
+      // Build XML chunks (Rotating Y-up to Slicer Z-up: x' = x, y' = -z, z' = y)
+      const matLines = currentPaletteHex.map((hex, i) =>
+        `        <base name="Filament Slot ${i + 1}" displaycolor="${hex}" />`
+      ).join('\n');
+
+      const vertLines = [];
+      for (let i = 0; i < posAttr.count; i++) {
+        const x = posAttr.getX(i).toFixed(3);
+        const y = (-posAttr.getZ(i)).toFixed(3);
+        const z = posAttr.getY(i).toFixed(3);
+        vertLines.push(`          <vertex x="${x}" y="${y}" z="${z}" />`);
+      }
+
+      const triLines = [];
+      for (let i = 0; i < idxAttr.count; i += 3) {
+        const v1 = idxAttr.getX(i);
+        const v2 = idxAttr.getX(i + 1);
+        const v3 = idxAttr.getX(i + 2);
+        const slot = vertexSlotIndices[v1] || 0;
+        triLines.push(`          <triangle v1="${v1}" v2="${v2}" v3="${v3}" pid="1" p1="${slot}" />`);
+      }
+
+      const modelXml = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <basematerials id="1">
+${matLines}
+    </basematerials>
+    <object id="2" name="CustomLampshade" type="model" pid="1" pindex="0">
+      <mesh>
+        <vertices>
+${vertLines.join('\n')}
+        </vertices>
+        <triangles>
+${triLines.join('\n')}
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="2" />
+  </build>
+</model>`;
+
+      const contentTypesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml" />
+</Types>`;
+
+      const relsXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" />
+</Relationships>`;
+
+      const zip = new JSZip();
+      zip.file('[Content_Types].xml', contentTypesXml);
+      zip.folder('_rels').file('.rels', relsXml);
+      zip.folder('3D').file('3dmodel.model', modelXml);
+
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `lampshade-${document.getElementById('modeSelect').value}-multicolor.3mf`;
+      link.click();
+      btn.textContent = origText;
+    });
+
+    // 2. VERTEX-COLORED .OBJ EXPORTER (Smooth RGB Vertex Colors)
+    document.getElementById('exportObjBtn').addEventListener('click', () => {
+      const posAttr = shadeMesh.geometry.getAttribute('position');
+      const colAttr = shadeMesh.geometry.getAttribute('color');
+      const idxAttr = shadeMesh.geometry.getIndex();
+
+      const lines = ['# Lampshade Studio Pro - Vertex Colored OBJ (Z-up for Slicers)'];
+      for (let i = 0; i < posAttr.count; i++) {
+        const x = posAttr.getX(i).toFixed(3);
+        const y = (-posAttr.getZ(i)).toFixed(3);
+        const z = posAttr.getY(i).toFixed(3);
+        const r = colAttr.getX(i).toFixed(4);
+        const g = colAttr.getY(i).toFixed(4);
+        const b = colAttr.getZ(i).toFixed(4);
+        lines.push(`v ${x} ${y} ${z} ${r} ${g} ${b}`);
+      }
+      for (let i = 0; i < idxAttr.count; i += 3) {
+        const a = idxAttr.getX(i) + 1;
+        const b = idxAttr.getX(i + 1) + 1;
+        const c = idxAttr.getX(i + 2) + 1;
+        lines.push(`f ${a} ${b} ${c}`);
+      }
+
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `lampshade-${document.getElementById('modeSelect').value}-colored.obj`;
+      link.click();
+    });
+
+    // 3. STANDARD BINARY .STL EXPORTER
+    document.getElementById('exportStlBtn').addEventListener('click', () => {
+      const exporter = new STLExporter();
+      const exportMesh = shadeMesh.clone();
+      exportMesh.geometry = shadeMesh.geometry.clone();
+      exportMesh.geometry.rotateX(Math.PI / 2);
+      exportMesh.updateMatrixWorld(true);
+
+      const stlBuffer = exporter.parse(exportMesh, { binary: true });
+      const blob = new Blob([stlBuffer], { type: 'application/octet-stream' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `lampshade-${document.getElementById('modeSelect').value}.stl`;
+      link.click();
+      exportMesh.geometry.dispose();
+    });
+
+    // UI Bindings
+    document.querySelectorAll('.preset-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.getElementById('colBottom').value = chip.dataset.b;
+        document.getElementById('colTop').value = chip.dataset.t;
+        document.getElementById('colBulb').value = chip.dataset.l;
+        document.getElementById('rainbowToggle').checked = false;
+        buildLampshadeGeometry();
+      });
+    });
+
+    const modeSelect = document.getElementById('modeSelect');
+    modeSelect.addEventListener('change', () => {
+      const m = modeSelect.value;
+      document.getElementById('panel-voronoi').classList.toggle('hidden', m !== 'voronoi');
+      document.getElementById('panel-ribs').classList.toggle('hidden', m !== 'ribs');
+      document.getElementById('panel-lithophane').classList.toggle('hidden', m !== 'lithophane');
+      buildLampshadeGeometry();
+    });
+
+    document.getElementById('reseedBtn').addEventListener('click', () => {
+      randomSeed = Math.floor(Math.random() * 100000);
+      buildLampshadeGeometry();
+    });
+
+    document.querySelectorAll('input, select').forEach(el => {
+      if (el.id === 'modeSelect' || el.id === 'imgUpload') return;
+      if (el.id === 'bulbToggle') {
+        el.addEventListener('change', e => {
+          bulbLight.visible = e.target.checked;
+          bulbMesh.visible = e.target.checked;
+        });
+      } else if (el.id === 'wireToggle') {
+        el.addEventListener('change', e => { shadeMat.wireframe = e.target.checked; });
+      } else {
+        el.addEventListener('input', buildLampshadeGeometry);
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    buildLampshadeGeometry();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
